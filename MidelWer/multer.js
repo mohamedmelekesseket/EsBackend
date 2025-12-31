@@ -1,11 +1,14 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-// Change this line in your multer config file
-// Change this line in your Multer config file
-// Remove the leading slash to make it relative to the project root
-const uploadsDir = 'uploads';
+// Get the directory where this file is located
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Use the same path calculation as server.js - uploads directory at server/uploads/
+const uploadsDir = path.join(__dirname, '..', 'uploads');
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
