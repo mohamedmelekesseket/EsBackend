@@ -55,40 +55,50 @@ export const singUp = async(req,res)=>{
 }
 
 export const singIn = async (req, res) => {
-    const {email , password} = req.body
+const { email, password } = req.body;
+
     try {
-      if (!validator.isEmail(email)) {
-        return res.status(400).json({ message: "Wrong E-mail" });
-      }
-      
-      if (!validator.isLength(password, { min: 5 })) {
-        return res.status(400).json({ message: "Wrong Password (min 5 characters)" });
-      }
-        const user = await User.findOne({ email })
-        if (!user) {
-          return res.status(400).json({ message: "Invalid email or password" });
-          
+        // 1. Basic Validation
+        if (!email || !password) {
+            return res.status(400).json({ message: "Please provide both email and password." });
         }
+
+        // 2. Format Validation
+        if (!validator.isEmail(email)) {
+            return res.status(400).json({ message: "The email format is invalid." });
+        }
+
+        // 3. Find User
+        const user = await User.findOne({ email });
+        
+        // 4. Constant-time check (Security)
+        // Even if user isn't found, we should perform a bcrypt comparison 
+        // later to prevent timing attacks, but for most apps, this check is standard:
+        if (!user) {
+            return res.status(401).json({ message: "Invalid email or password credentials." });
+        }
+
+        // 5. Verify Password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(400).json({ message: "Invalid email or password" });
+            return res.status(401).json({ message: "Invalid email or password credentials." });
         }
 
+        // 6. Success Response
+        const token = GenerateToken(user._id);
 
-        if (isMatch && user) {
-            return res.status(200).json({
-              id : user._id,
-              email :user.email,
-              fullName : user.fullName,
-              phoneNumber: user.phoneNumber,
-              token : GenerateToken(user._id),
-              role : user.role,
-          })
-        }
+        return res.status(200).json({
+            id: user._id,
+            email: user.email,
+            fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
+            role: user.role,
+            token: token
+        });
+
     } catch (error) {
-      console.log(error)
-       return res.status(500).json({ message: "Internal Server Error" });
-
+        console.error("Login Error:", error);
+        return res.status(500).json({ message: "An unexpected error occurred. Please try again later." });
     }
 };
 export const CheckEmail = async (req, res) => {
