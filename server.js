@@ -3,7 +3,7 @@ import colors from 'colors';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
+import cookieParser from 'cookie-parser';
 import connectToMongooset from './config/DBconfig.js';
 import commonRouter from './router/commonRouter.js';
 import ownerRouter from './router/owenrRouter.js';
@@ -19,7 +19,7 @@ const port = process.env.PORT || 2025;
 
 const app = express();
 connectToMongooset();
-
+app.use(cookieParser());
 app.use(express.json());
 
 // ✅ CORS configuration

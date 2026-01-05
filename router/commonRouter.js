@@ -1,11 +1,11 @@
 import express from 'express'
-import {  addToCart, getCart, removeFromCart, singUp, singIn, Subscribe, updateCartItem, getFilters, getProduct, ConfirmSubscribe, ResetEmail, CheckEmail, Newpassword, createOrder, ContactMessage } from '../Controls/common/common.js'
+import {  addToCart, getCart, removeFromCart,  singIn, Subscribe, updateCartItem, getFilters, getProduct, ConfirmSubscribe, ResetEmail, CheckEmail, Newpassword, createOrder, ContactMessage, signUp } from '../Controls/common/common.js'
 import { getAllSubCategory, getProductById, getProductCart } from '../Controls/admin/admin.js'
 import { protect } from '../MidelWer/auth.js'
 
 const router=express.Router()
 
-router.post('/SignUp',singUp)
+router.post('/SignUp',signUp)
 router.post("/SignIn",singIn)
 router.get("/Get-product/:id",getProductById)
 router.get("/Get-ProductCart",getProductCart)

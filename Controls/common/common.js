@@ -11,94 +11,110 @@ import nodemailer from "nodemailer"
 import crypto from "crypto";
 import { log } from "console"
 
-export const singUp = async(req,res)=>{
-    
-    const {email,password,phoneNumber}=req.body
-    try {
-
-        if( !email || !password ){
-            return res.status(400).json({Message:"All files are required"})
-        }
-        const exist2= await User.findOne({phoneNumber})
-        if (exist2) {
-            return res.status(400).json({ message: "Cette Number est déjà utilisée" });
-        }
-        const exist= await User.findOne({email})
-        if (exist) {
-            return res.status(400).json({ message: "Cette adresse e-mail est déjà utilisée" });
-        }
-
-        if (!validator.isEmail(email)) {
-            return res.status(400).json({ message: "Wrong E-mail" });
-        }
-          
-        if (!validator.isLength(password, { min: 5 })) {
-            return res.status(400).json({ message: "Wrong Password (min 5 characters)" });
-        }
-        const HashedPassword= await bcrypt.hash(password,10)
-        const newuser= new User({email,password:HashedPassword,phoneNumber})
-        await newuser.save()
-       return res.status(201).json({
-            id : newuser._id,
-            email :newuser.email,
-            phoneNumber: newuser.phoneNumber,
-            token : GenerateToken(newuser._id),
-            role : 'User',
-        })
-        
-    } catch (error) {
-        console.log(error)
-        return res.status(500).json({ message: "Internal Server Error" });
-      }
-
-
-}
-
-export const singIn = async (req, res) => {
-const { email, password } = req.body;
+export const signUp = async (req, res) => {
+    // 1. Extract and Sanitize
+    let { email, password, phoneNumber } = req.body;
 
     try {
-        // 1. Basic Validation
-        if (!email || !password) {
-            return res.status(400).json({ message: "Please provide both email and password." });
+        // Basic check
+        if (!email || !password || !phoneNumber) {
+            return res.status(400).json({ message: "All fields are required" });
         }
 
-        // 2. Format Validation
+        // Sanitize
+
+        // 2. Format Validation (Cheap checks first)
         if (!validator.isEmail(email)) {
-            return res.status(400).json({ message: "The email format is invalid." });
+            return res.status(400).json({ message: "Invalid email format" });
         }
-
-        // 3. Find User
-        const user = await User.findOne({ email });
         
-        // 4. Constant-time check (Security)
-        // Even if user isn't found, we should perform a bcrypt comparison 
-        // later to prevent timing attacks, but for most apps, this check is standard:
-        if (!user) {
-            return res.status(401).json({ message: "Invalid email or password credentials." });
+        if (!validator.isLength(password, { min: 8 })) {
+            return res.status(400).json({ message: "Password must be at least 8 characters" });
         }
 
-        // 5. Verify Password
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ message: "Invalid email or password credentials." });
+        // 3. Check for existing user (One database call is faster)
+        const existingUser = await User.findOne({ 
+            $or: [{ email }, { phoneNumber }] 
+        });
+
+        if (existingUser) {
+            const field = existingUser.email === email ? "email" : "phone number";
+            return res.status(400).json({ message: `That ${field} is already in use` });
         }
 
-        // 6. Success Response
-        const token = GenerateToken(user._id);
+        // 4. Hash and Save
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        return res.status(200).json({
-            id: user._id,
-            email: user.email,
-            fullName: user.fullName,
-            phoneNumber: user.phoneNumber,
-            role: user.role,
-            token: token
+        const newUser = new User({
+            email,
+            password: hashedPassword,
+            phoneNumber,
+            role: 'Client' // Set default role
+        });
+
+        await newUser.save();
+
+        // 5. Generate Token
+        const token = GenerateToken(newUser._id);
+
+        // Professional practice: Don't send back the password, even if hashed
+        // 1. Set the cookie
+        res.cookie('token', token, {
+            httpOnly: true, // Key for security!
+            secure: process.env.NODE_ENV === 'production', // Only sends over HTTPS
+            sameSite: 'strict', // Prevents CSRF attacks
+            maxAge: 7 * 24 * 60 * 60 * 1000 // Cookie expires in 7 days
+        });
+
+        // 2. Send the user data WITHOUT the token in the JSON
+        return res.status(201).json({
+            id: newUser._id,
+            email: newUser.email,
+            role: newUser.role
         });
 
     } catch (error) {
-        console.error("Login Error:", error);
-        return res.status(500).json({ message: "An unexpected error occurred. Please try again later." });
+        console.error("Signup Error:", error);
+        return res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+// Improved Backend Logic
+export const singIn = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // 1. Sanitize input (lowercase email to prevent duplicates)
+
+        const user = await User.findOne({ email: email });
+
+        // 2. Always check password (even if user doesn't exist)
+        // This helps prevent timing attacks
+        const validPassword = user ? await bcrypt.compare(password, user.password) : false;
+
+        if (!user || !validPassword) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const token = GenerateToken(user._id);
+
+        // 3. Send token in a secure cookie instead of just JSON
+        res.cookie('token', token, {
+            httpOnly: true, // Prevents XSS
+            secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
+            sameSite: 'strict',
+            maxAge: 3600000 // 1 hour
+        });
+
+        return res.status(200).json({
+            user: { id: user._id, fullName: user.fullName ,role:user.role} // Don't send the token in the body if using cookies
+        });
+
+    } catch (error) {
+        // Log the actual error for you, send a generic one to the user
+        console.error("Internal Server Error:", error); 
+        return res.status(500).json({ message: "Server error" });
     }
 };
 export const CheckEmail = async (req, res) => {
