@@ -1,6 +1,6 @@
 import express from 'express'
 import { protect } from '../MidelWer/auth.js'
-import {  AddCategory, AddProduct, AddSubcategory, deleCategory, deleSubCategory, deleteProduct, getCategory, getProduct, getProductById, getProductCart, getSubCategory, Messages, UpdateProduct } from '../Controls/admin/admin.js'
+import {  AddCategory, AddProduct, AddSubcategory, deleCategory, deleSubCategory, deleteProduct, getCategory, getOrders, getProduct, getProductById, getProductCart, getSubCategory, Messages, UpdateProduct, updateOrderStatus } from '../Controls/admin/admin.js'
 import upload from '../MidelWer/multer.js'
 
 const router=express.Router()
@@ -23,4 +23,9 @@ router.delete('/Delete-Product/:id',protect,deleteProduct)
 router.get("/Get-products",getProduct)
 router.get("/Get-product/:id", getProductById)
 router.put('/UpdateProduct/:id',protect,upload.any(),UpdateProduct)
+// Order
+router.get('/Get-Orders',protect,getOrders)
+router.put('/Update-Order-Status/:id',protect,updateOrderStatus)
+
+
 export default router

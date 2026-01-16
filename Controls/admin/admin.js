@@ -3,7 +3,7 @@ import Message from "../../models/Messages.js"
 import Subcategory from "../../models/subcategory.js"
 import Product from "../../models/Product.js"
 import Cart from "../../models/Cart.js"
-
+import Order from "../../models/Order.js"
 
   export const Messages = async(req,res)=>{    
       if (req.user.role !== "Owner" && req.user.role !== "Admin" ) {
@@ -146,7 +146,7 @@ import Cart from "../../models/Cart.js"
     }
   };
 
-// Product
+////////////////////// Product ////////////////////////
 
   export const getProduct = async(req,res)=>{    
       const {id}=req.params
@@ -356,5 +356,45 @@ export const AddProduct = async (req, res) => {
       } catch (error) {
           console.log(error);
           return res.status(404).json({Message:"Internal server error",error})
+      }
+  }
+
+
+  ////////////////////// Orders ////////////////////////
+  export const getOrders= async(req,res)=>{    
+      const {id}=req.params
+      try {
+          const order= await Order.find({}).populate('userId').populate('products.productId')     
+          return res.status(200).json(order)
+      } catch (error) {
+          console.log(error);
+          return res.status(404).json({Message:"Internal server error",error})
+      }
+  }
+
+  export const updateOrderStatus = async(req,res)=>{    
+      if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+          return res.status(403).json({message : "You don't have access to do that"})
+      }
+      const {id}=req.params
+      const {status}=req.body
+      try {
+          if(!status) {
+              return res.status(400).json({message : 'Status is required'})
+          }
+          const validStatuses = ['pending', 'shipped', 'delivered', 'cancelled']
+          if(!validStatuses.includes(status)) {
+              return res.status(400).json({message : 'Invalid status'})
+          }
+          const order= await Order.findById(id)
+          if(!order) {
+              return res.status(404).json({message : 'Order not found'})
+          }
+          order.status = status
+          await order.save()
+          return res.status(200).json({message : 'Order status updated successfully', order})
+      } catch (error) {
+          console.log(error);
+          return res.status(500).json({Message:"Internal server error",error})
       }
   }
