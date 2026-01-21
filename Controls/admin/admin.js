@@ -281,7 +281,7 @@ export const AddProduct = async (req, res) => {
       if (parsedColor && Array.isArray(parsedColor)) {
         for (const c of parsedColor) {
           // 🔹 Parse existing images sent from frontend
-        let existing = req.body[`existingImages[${c}]`];
+          let existing = req.body[`existingImages[${c}]`];
           if (existing) {
             try {
               // If frontend sent JSON string → parse
@@ -294,30 +294,49 @@ export const AddProduct = async (req, res) => {
             }
           }
 
-        // Always ensure it's an array
-        if (!Array.isArray(existing)) {
-          existing = [existing];
-        }
-
+          // Always ensure it's an array
+          if (!Array.isArray(existing)) {
+            existing = existing ? [existing] : [];
+          }
 
           // 🔹 New uploaded files
           const files = (req.files || []).filter(f => f.fieldname === `images[${c}][]`);
-          const newUrls = files.map(f => f.filename );
+          const newUrls = files.map(f => `/uploads/${f.filename}`);
 
           // 🔹 Find already stored images for this color
           const currentColorObj = currentImages.find(img => img.color === c);
           let mergedUrls = [];
 
           if (currentColorObj) {
-            // Keep only the ones that are still in "existing"
-            mergedUrls = currentColorObj.urls.filter(url => existing.includes(url));
+            // If existing images are explicitly provided (not undefined), use them
+            // If undefined (not sent from frontend), preserve all existing images
+            if (existing !== undefined && existing !== null) {
+              // Normalize URLs for comparison (handle both /uploads/... and full paths)
+              const normalizeUrl = (u) => {
+                if (!u) return '';
+                const str = String(u);
+                return str.replace(/^.*\/uploads\//, '/uploads/');
+              };
+              const normalizedExisting = existing.map(normalizeUrl).filter(Boolean);
+              
+              // Keep only existing URLs that match
+              mergedUrls = currentColorObj.urls.filter(url => {
+                const normalizedUrl = normalizeUrl(url);
+                return normalizedExisting.includes(normalizedUrl);
+              });
+            } else {
+              // No existing images specified - preserve all current images
+              mergedUrls = [...currentColorObj.urls];
+            }
           }
 
           // Add new uploads
           mergedUrls = [...mergedUrls, ...newUrls];
 
           // Final push
-          images.push({ color: c, urls: mergedUrls });
+          if (mergedUrls.length > 0 || newUrls.length > 0) {
+            images.push({ color: c, urls: mergedUrls });
+          }
         }
       }
 
