@@ -1,12 +1,12 @@
 import express from 'express'
-import {  addToCart, getCart, removeFromCart,  singIn, Subscribe, updateCartItem, getFilters, getProduct, ConfirmSubscribe, ResetEmail, CheckEmail, Newpassword, createOrder, ContactMessage, signUp } from '../Controls/common/common.js'
+import {  addToCart, getCart, removeFromCart, Subscribe, updateCartItem, getFilters, getProduct, ConfirmSubscribe, ResetEmail, CheckEmail, Newpassword, createOrder, ContactMessage, signUp, signIn,  } from '../Controls/common/common.js'
 import { getAllSubCategory, getProductById, getProductCart } from '../Controls/admin/admin.js'
 import { protect } from '../MidelWer/auth.js'
 
 const router=express.Router()
 
 router.post('/SignUp',signUp)
-router.post("/SignIn",singIn)
+router.post("/SignIn",signIn)
 router.get("/Get-product/:id",getProductById)
 router.get("/Get-ProductCart",getProductCart)
 router.get('/getAllSubCategory',getAllSubCategory)
@@ -17,6 +17,13 @@ router.post('/ResetEmail',ResetEmail)
 router.post('/CheckEmail',CheckEmail)
 router.post('/NewPassword',Newpassword)
 router.post('/Contactez-nous',ContactMessage)
+router.get('/me', protect, (req, res) => {
+  res.json({
+    id: req.user._id,
+    email: req.user.email,
+    role: req.user.role
+  });
+});
 
 // Cart routes
 router.post('/AddToCart', protect, addToCart)

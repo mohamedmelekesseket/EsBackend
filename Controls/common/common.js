@@ -11,112 +11,117 @@ import nodemailer from "nodemailer"
 import crypto from "crypto";
 import { log } from "console"
 
+
+/* ========================= SIGN UP ========================= */
+
 export const signUp = async (req, res) => {
-    // 1. Extract and Sanitize
+  try {
     let { email, password, phoneNumber } = req.body;
 
-    try {
-        // Basic check
-        if (!email || !password || !phoneNumber) {
-            return res.status(400).json({ message: "All fields are required" });
-        }
-
-        // Sanitize
-
-        // 2. Format Validation (Cheap checks first)
-        if (!validator.isEmail(email)) {
-            return res.status(400).json({ message: "Invalid email format" });
-        }
-        
-        if (!validator.isLength(password, { min: 8 })) {
-            return res.status(400).json({ message: "Password must be at least 8 characters" });
-        }
-
-        // 3. Check for existing user (One database call is faster)
-        const existingUser = await User.findOne({ 
-            $or: [{ email }, { phoneNumber }] 
-        });
-
-        if (existingUser) {
-            const field = existingUser.email === email ? "email" : "phone number";
-            return res.status(400).json({ message: `That ${field} is already in use` });
-        }
-
-        // 4. Hash and Save
-        const saltRounds = 10;
-        const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-        const newUser = new User({
-            email,
-            password: hashedPassword,
-            phoneNumber,
-            role: 'Client' // Set default role
-        });
-
-        await newUser.save();
-
-        // 5. Generate Token
-        const token = GenerateToken(newUser._id);
-
-        // Professional practice: Don't send back the password, even if hashed
-        // 1. Set the cookie
-        res.cookie('token', token, {
-            httpOnly: true, // Key for security!
-            secure: process.env.NODE_ENV === 'production', // Only sends over HTTPS
-            sameSite: 'strict', // Prevents CSRF attacks
-            maxAge: 7 * 24 * 60 * 60 * 1000 // Cookie expires in 7 days
-        });
-
-        // 2. Send the user data WITHOUT the token in the JSON
-        return res.status(201).json({
-            id: newUser._id,
-            email: newUser.email,
-            role: newUser.role
-        });
-
-    } catch (error) {
-        console.error("Signup Error:", error);
-        return res.status(500).json({ message: "Internal Server Error" });
+    if (!email || !password || !phoneNumber) {
+      return res.status(400).json({ message: "All fields are required" });
     }
+
+    // Normalize
+    phoneNumber = phoneNumber.trim();
+
+    // Validate
+    if (!validator.isEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    if (!validator.isLength(password, { min: 8 })) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+    // Check existing
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phoneNumber }]
+    });
+
+    if (existingUser) {
+      const field = existingUser.email === email ? "email" : "phone number";
+      return res.status(400).json({ message: `That ${field} is already in use` });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await User.create({
+      email,
+      password: hashedPassword,
+      phoneNumber,
+      role: "Client"
+    });
+
+    // Generate token
+    const token = generateToken(newUser._id);
+
+    // Set cookie
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    return res.status(201).json({
+      id: newUser._id,
+      email: newUser.email,
+      role: newUser.role
+    });
+
+  } catch (error) {
+    console.error("Signup error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
 };
 
-// Improved Backend Logic
-export const singIn = async (req, res) => {
-    try {
-        const { email, password } = req.body;
+/* ========================= SIGN IN ========================= */
 
-        // 1. Sanitize input (lowercase email to prevent duplicates)
-
-        const user = await User.findOne({ email: email });
-
-        // 2. Always check password (even if user doesn't exist)
-        // This helps prevent timing attacks
-        const validPassword = user ? await bcrypt.compare(password, user.password) : false;
-
-        if (!user || !validPassword) {
-            return res.status(401).json({ message: "Invalid credentials" });
-        }
-
-        const token = GenerateToken(user._id);
-
-        // 3. Send token in a secure cookie instead of just JSON
-        res.cookie('token', token, {
-            httpOnly: true, // Prevents XSS
-            secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
-            sameSite: 'strict',
-            maxAge: 3600000 // 1 hour
-        });
-
-        return res.status(200).json({
-            user: { id: user._id, fullName: user.fullName ,role:user.role} // Don't send the token in the body if using cookies
-        });
-
-    } catch (error) {
-        // Log the actual error for you, send a generic one to the user
-        console.error("Internal Server Error:", error); 
-        return res.status(500).json({ message: "Server error" });
+export const signIn = async (req, res) => {
+  try {
+    let { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
     }
+
+
+    const user = await User.findOne({ email });
+
+    const validPassword = user
+      ? await bcrypt.compare(password, user.password)
+      : false;
+
+    if (!user || !validPassword) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    const token = generateToken(user._id);
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    return res.status(200).json({
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role
+      }
+    });
+
+  } catch (error) {
+    console.error("Signin error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
 };
+
+
 export const CheckEmail = async (req, res) => {
   const {email} = req.body;
 
@@ -697,6 +702,6 @@ async function SendEmail(message, Number, Name, email, subject) {
 }
 
 
-const GenerateToken =(id)=>{
+const generateToken =(id)=>{
     return jwt.sign({id},process.env.JWT_SECRET,{expiresIn:"7d"})
 }

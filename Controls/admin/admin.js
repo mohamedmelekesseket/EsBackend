@@ -4,10 +4,11 @@ import Subcategory from "../../models/subcategory.js"
 import Product from "../../models/Product.js"
 import Cart from "../../models/Cart.js"
 import Order from "../../models/Order.js"
+import Bug from "../../models/Bug.js"
 
   export const Messages = async(req,res)=>{    
       if (req.user.role !== "Owner" && req.user.role !== "Admin" ) {
-          return res.status(500).json({message : "You don't have access to do that"})
+          return res.status(500).json({message : "You don't have access to do Anything"})
       }
       try {
           const message= await Message.find()        
@@ -22,7 +23,7 @@ import Order from "../../models/Order.js"
   export const AddCategory = async (req,res) => {
       const {name,slug,images,icon} = req.body
       if (req.user.role !== "Admin" && req.user.role !== "Owner") {
-        return res.status(403).json({ message: "You don't have access to do that" }); // use 403 Forbidden
+        return res.status(403).json({ message: "You don't have access to do Anything" }); // use 403 Forbidden
       }
 
       try {
@@ -71,7 +72,7 @@ import Order from "../../models/Order.js"
   export const AddSubcategory = async (req, res) => {
       const { name, slug, categoryId,genre } = req.body;
       if (req.user.role !== "Admin" && req.user.role !== "Owner") {
-          return res.status(500).json({ message: "You don't have access to do that" });
+          return res.status(500).json({ message: "You don't have access to do Anything" });
       }
       try {
           if (!name || !categoryId) {
@@ -108,7 +109,7 @@ import Order from "../../models/Order.js"
   }
   export const deleSubCategory= async (req , res) => {
       if (req.user.role !== "Admin" && req.user.role !== "Owner") {
-          return res.status(500).json({message : "You don't have access to do that"})
+          return res.status(500).json({message : "You don't have access to do Anything"})
       }
       const { id } = req.params
       try {
@@ -122,7 +123,7 @@ import Order from "../../models/Order.js"
   }
   export const deleCategory = async (req, res) => {
     if (req.user.role !== "Admin" && req.user.role !== "Owner") {
-      return res.status(403).json({ message: "You don't have access to do that" });
+      return res.status(403).json({ message: "You don't have access to do Anything" });
     }
 
     const { id } = req.params;
@@ -160,7 +161,7 @@ import Order from "../../models/Order.js"
   }
   export const deleteProduct= async (req , res) => {
       if (req.user.role !== "Admin" && req.user.role !== "Owner") {
-          return res.status(500).json({message : "You don't have access to do that"})
+          return res.status(500).json({message : "You don't have access to do Anything"})
       }
       const { id } = req.params
       try {
@@ -393,7 +394,7 @@ export const AddProduct = async (req, res) => {
 
   export const updateOrderStatus = async(req,res)=>{    
       if (req.user.role !== "Admin" && req.user.role !== "Owner") {
-          return res.status(403).json({message : "You don't have access to do that"})
+          return res.status(403).json({message : "You don't have access to do Anything"})
       }
       const {id}=req.params
       const {status}=req.body
@@ -417,3 +418,44 @@ export const AddProduct = async (req, res) => {
           return res.status(500).json({Message:"Internal server error",error})
       }
   }
+
+////////////////////// Bugs ////////////////////////
+export const AddBug = async (req, res) => {
+  const { title, description, priority } = req.body;
+
+  // 1️⃣ Validation
+  if (
+    !title?.trim() ||
+    !description?.trim() ||
+    !priority
+  ) {
+    return res.status(400).json({
+      message: "All fields are required",
+    });
+  }
+
+  try {
+    // 2️⃣ Create bug
+    const bug = await Bug.create({
+      title: title.trim(),
+      description: description.trim(),
+      priority,
+      status: "To do", // default status
+      createdAt: new Date(),
+    });
+
+    // 3️⃣ Success
+    return res.status(201).json({
+      message: "Bug reported successfully",
+      bug,
+    });
+
+  } catch (error) {
+    console.error("Error creating bug:", error);
+
+    return res.status(500).json({
+      message: "Failed to create bug",
+      error: error.message,
+    });
+  }
+};
