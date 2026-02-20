@@ -382,6 +382,9 @@ export const AddProduct = async (req, res) => {
 
   ////////////////////// Orders ////////////////////////
   export const getOrders= async(req,res)=>{    
+    if (req.user.role !== "Owner" && req.user.role !== "Admin" ) {
+        return res.status(500).json({message : "You don't have access to do that"})
+    }
       const {id}=req.params
       try {
           const order= await Order.find({}).populate('userId').populate('products.productId')     
