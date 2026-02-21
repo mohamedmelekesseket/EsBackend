@@ -123,26 +123,26 @@ export const signIn = async (req, res) => {
 
 
 export const CheckEmail = async (req, res) => {
-  const {email} = req.body;
+  const { email } = req.body;
 
   try {
     if (!email) {
-      return res.status(400).json({ message: "email are required" });
+      return res.status(400).json({ message: "Email is required" });
     }
 
-  
-    const find = await User.findOne({ email: email });
+    const find = await User.findOne({ email });
 
     if (!find) {
-      return res.status(204).json({ message: "User not found" });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json({ message: "Email Exist" });
+    res.status(200).json({ message: "Email exists" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
 export const Newpassword = async (req, res) => {
   const { password, email } = req.body;
 
@@ -151,18 +151,16 @@ export const Newpassword = async (req, res) => {
       return res.status(400).json({ message: "Password and email are required" });
     }
 
-    // Hash the new password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Update the user's password by email
     const updatedUser = await User.findOneAndUpdate(
-      { email: email },                // filter by email
-      { password: hashedPassword },    // set new password
-      { new: true }                    // return updated user
+      { email },
+      { password: hashedPassword },
+      { new: true }
     );
 
     if (!updatedUser) {
-      return res.status(204).json({ message: "User not found" });
+      return res.status(404).json({ message: "User not found" });
     }
 
     res.status(200).json({ message: "Password updated successfully" });
@@ -171,21 +169,77 @@ export const Newpassword = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+
 export const ResetEmail = async (req, res) => {
   const { email } = req.body;
 
   try {
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // BUG 7 FIX: Check the user exists before doing anything
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     // Generate a random 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
+
+    // BUG 1 FIX: Store code in DB, never send it to the client
+    await User.findOneAndUpdate(
+      { email },
+      { resetCode: code, resetCodeExpiry: expiry }
+    );
 
     // Send email
     await SendEmailReset(code, email);
 
-    // Return the code in response (⚠️ only for dev/testing, in prod store in DB/session)
-    res.status(200).json({ code });
+    // BUG 1 FIX: Only return a success message — no code in the response
+    res.status(200).json({ message: "Reset code sent successfully" });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({ error: "Failed to send email" });
+  }
+};
+
+export const VerifyCode = async (req, res) => {
+  const { email, code } = req.body;
+
+  try {
+    if (!email || !code) {
+      return res.status(400).json({ message: "Email and code are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check code matches
+    if (user.resetCode?.trim() !== code?.trim()) {
+      return res.status(400).json({ message: "Invalid code" });
+    }
+
+    // Check code hasn't expired
+    if (!user.resetCodeExpiry || user.resetCodeExpiry < Date.now()) {
+      return res.status(400).json({ message: "Code has expired" });
+    }
+
+    // Clear the code after successful verification so it can't be reused
+    await User.findOneAndUpdate(
+      { email },
+      { resetCode: null, resetCodeExpiry: null }
+    );
+
+    res.status(200).json({ message: "Code verified successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -193,17 +247,17 @@ function SendEmailReset(code, email) {
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: "meleksaket2003@gmail.com",
-      pass: "luxa gacz fkyb sryy" // app password
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_PASS,
     }
   });
 
   const mailOptions = {
-    from: `"KickOff Support" <meleksaket2003@gmail.com>`,
+    from: `"KickOff Support" <${process.env.GMAIL_USER}>`,
     to: email,
     subject: "🔐 Vérification en deux étapes - KickOff",
     html: `
-      <div style="font-family: Arial, sans-serif; background-color: #0B0D10; color: #fff; padding: 30px; border-radius: 10px;width: 100% ; margin: auto;">
+      <div style="font-family: Arial, sans-serif; background-color: #0B0D10; color: #fff; padding: 30px; border-radius: 10px; width: 100%; margin: auto;">
         <h2 style="text-align:center; color:#00E6AD;">Vérification en deux étapes</h2>
         <p style="text-align:center; color:#ddd; font-size:14px;">
           Un code de vérification a été envoyé à votre email <br/>
@@ -212,11 +266,7 @@ function SendEmailReset(code, email) {
         <p style="text-align:center; color:#aaa; font-size:13px; margin-bottom: 20px;">
           Veuillez saisir ce code, il expirera dans 15 minutes.
         </p>
-
-        <h2 style="text-align:center; color:#00E6AD;">
-          ${code}
-        </h2>
-
+        <h2 style="text-align:center; color:#00E6AD;">${code}</h2>
         <p style="text-align:center; font-size:12px; color:#888; margin-top:25px;">
           Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet email.
         </p>
@@ -226,6 +276,7 @@ function SendEmailReset(code, email) {
 
   return transporter.sendMail(mailOptions);
 }
+
 
 
 // Cart functionality

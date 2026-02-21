@@ -5,6 +5,8 @@ const userSchema=mongoose.Schema({
     password:{type:String,required:true},
     phoneNumber:{type:Number},
     role:{type:String,enum:["Client","Admin","Owner"],default:"Client"},
+    resetCode: { type: String, default: null },
+    resetCodeExpiry: { type: Date, default: null },
 },{timestamps:true})
 
 export default mongoose.model('User',userSchema)
