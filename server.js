@@ -18,6 +18,7 @@ const __dirname = path.dirname(__filename);
 const port = process.env.PORT || 2025;
 
 const app = express();
+app.set('trust proxy', 1);
 connectToMongooset();
 app.use(cookieParser());
 app.use(express.json());

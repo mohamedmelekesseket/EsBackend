@@ -10,6 +10,8 @@ import mongoose from "mongoose";
 import nodemailer from "nodemailer"
 import crypto from "crypto";
 import { log } from "console"
+import { Resend } from 'resend';
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 
 /* ========================= SIGN UP ========================= */
@@ -242,20 +244,19 @@ export const VerifyCode = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
-function SendEmailReset(code, email) {
+async function SendEmailReset(code, email) {
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_PASS,
+      user: 'meleksaket2003@gmail.com',
+      pass: 'luxa gacz fkyb sryy'  // your app password
     }
   });
 
-  const mailOptions = {
-    from: `"KickOff Support" <${process.env.GMAIL_USER}>`,
+  await transporter.sendMail({
+    from: '"KickOff" <meleksaket2003@gmail.com>',
     to: email,
-    subject: "🔐 Vérification en deux étapes - KickOff",
+    subject: '🔐 Vérification en deux étapes - KickOff',
     html: `
       <div style="font-family: Arial, sans-serif; background-color: #0B0D10; color: #fff; padding: 30px; border-radius: 10px; width: 100%; margin: auto;">
         <h2 style="text-align:center; color:#00E6AD;">Vérification en deux étapes</h2>
@@ -272,11 +273,8 @@ function SendEmailReset(code, email) {
         </p>
       </div>
     `
-  };
-
-  return transporter.sendMail(mailOptions);
+  });
 }
-
 
 
 // Cart functionality
