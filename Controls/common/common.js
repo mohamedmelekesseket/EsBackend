@@ -6,255 +6,214 @@ import Order from "../../models/Order.js"
 import Abonne from "../../models/Abonne.js"
 import validator from 'validator'
 import Product from "../../models/Product.js"
-import mongoose from "mongoose";
+import mongoose from "mongoose"
 import nodemailer from "nodemailer"
-import crypto from "crypto";
-import { log } from "console"
-import { Resend } from 'resend';
+import crypto from "crypto"
+import { Resend } from 'resend'
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-
-/* ========================= SIGN UP ========================= */
+// ==================== Auth ====================
 
 export const signUp = async (req, res) => {
   try {
     let { email, password, phoneNumber } = req.body;
 
     if (!email || !password || !phoneNumber) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ success: false, message: "Email, password, and phone number are required." });
     }
 
-    // Normalize
     phoneNumber = phoneNumber.trim();
 
-    // Validate
     if (!validator.isEmail(email)) {
-      return res.status(400).json({ message: "Invalid email format" });
+      return res.status(400).json({ success: false, message: "Invalid email address format." });
     }
 
     if (!validator.isLength(password, { min: 8 })) {
-      return res.status(400).json({ message: "Password must be at least 8 characters" });
+      return res.status(400).json({ success: false, message: "Password must be at least 8 characters long." });
     }
 
-    // Check existing
-    const existingUser = await User.findOne({
-      $or: [{ email }, { phoneNumber }]
-    });
-
+    const existingUser = await User.findOne({ $or: [{ email }, { phoneNumber }] });
     if (existingUser) {
-      const field = existingUser.email === email ? "email" : "phone number";
-      return res.status(400).json({ message: `That ${field} is already in use` });
+      const field = existingUser.email === email ? "email address" : "phone number";
+      return res.status(409).json({ success: false, message: `That ${field} is already associated with an account.` });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await User.create({ email, password: hashedPassword, phoneNumber, role: "Client" });
 
-    const newUser = await User.create({
-      email,
-      password: hashedPassword,
-      phoneNumber,
-      role: "Client"
-    });
-
-    // Generate token
     const token = generateToken(newUser._id);
-
-    // Set cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     return res.status(201).json({
-      id: newUser._id,
-      email: newUser.email,
-      role: newUser.role
+      success: true,
+      data: { id: newUser._id, email: newUser.email, role: newUser.role },
     });
-
   } catch (error) {
-    console.error("Signup error:", error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("[signUp]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
 
-/* ========================= SIGN IN ========================= */
-
 export const signIn = async (req, res) => {
   try {
-    let { email, password } = req.body;
-    
+    const { email, password } = req.body;
+
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      return res.status(400).json({ success: false, message: "Email and password are required." });
     }
 
-
     const user = await User.findOne({ email });
-
-    const validPassword = user
-      ? await bcrypt.compare(password, user.password)
-      : false;
+    const validPassword = user ? await bcrypt.compare(password, user.password) : false;
 
     if (!user || !validPassword) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
     const token = generateToken(user._id);
-
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     return res.status(200).json({
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role
-      }
+      success: true,
+      data: { id: user._id, email: user.email, role: user.role },
+    });
+  } catch (error) {
+    console.error("[signIn]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
+  }
+};
+export const logout = async (req, res) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
     });
 
   } catch (error) {
-    console.error("Signin error:", error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("[logout]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
+
+
+
 
 
 export const CheckEmail = async (req, res) => {
   const { email } = req.body;
-
   try {
     if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+      return res.status(400).json({ success: false, message: "Email address is required." });
     }
 
-    const find = await User.findOne({ email });
-
-    if (!find) {
-      return res.status(404).json({ message: "User not found" });
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "No account found with that email address." });
     }
 
-    res.status(200).json({ message: "Email exists" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(200).json({ success: true, message: "Email address verified." });
+  } catch (error) {
+    console.error("[CheckEmail]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
 
 export const Newpassword = async (req, res) => {
   const { password, email } = req.body;
-
   try {
     if (!password || !email) {
-      return res.status(400).json({ message: "Password and email are required" });
+      return res.status(400).json({ success: false, message: "Email and new password are required." });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    const updatedUser = await User.findOneAndUpdate(
-      { email },
-      { password: hashedPassword },
-      { new: true }
-    );
+    const updatedUser = await User.findOneAndUpdate({ email }, { password: hashedPassword }, { new: true });
 
     if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "No account found with that email address." });
     }
 
-    res.status(200).json({ message: "Password updated successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(200).json({ success: true, message: "Password updated successfully." });
+  } catch (error) {
+    console.error("[Newpassword]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
 
-
-
 export const ResetEmail = async (req, res) => {
   const { email } = req.body;
-
   try {
     if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+      return res.status(400).json({ success: false, message: "Email address is required." });
     }
 
-    // BUG 7 FIX: Check the user exists before doing anything
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "No account found with that email address." });
     }
 
-    // Generate a random 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
 
-    // BUG 1 FIX: Store code in DB, never send it to the client
-    await User.findOneAndUpdate(
-      { email },
-      { resetCode: code, resetCodeExpiry: expiry }
-    );
-
-    // Send email
+    await User.findOneAndUpdate({ email }, { resetCode: code, resetCodeExpiry: expiry });
     await SendEmailReset(code, email);
 
-    // BUG 1 FIX: Only return a success message — no code in the response
-    res.status(200).json({ message: "Reset code sent successfully" });
+    return res.status(200).json({ success: true, message: "A verification code has been sent to your email." });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to send email" });
+    console.error("[ResetEmail]", error);
+    return res.status(500).json({ success: false, message: "Failed to send reset email. Please try again later." });
   }
 };
 
 export const VerifyCode = async (req, res) => {
   const { email, code } = req.body;
-
   try {
     if (!email || !code) {
-      return res.status(400).json({ message: "Email and code are required" });
+      return res.status(400).json({ success: false, message: "Email and verification code are required." });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "No account found with that email address." });
     }
 
-    // Check code matches
     if (user.resetCode?.trim() !== code?.trim()) {
-      return res.status(400).json({ message: "Invalid code" });
+      return res.status(400).json({ success: false, message: "The verification code is incorrect." });
     }
 
-    // Check code hasn't expired
     if (!user.resetCodeExpiry || user.resetCodeExpiry < Date.now()) {
-      return res.status(400).json({ message: "Code has expired" });
+      return res.status(400).json({ success: false, message: "The verification code has expired. Please request a new one." });
     }
 
-    // Clear the code after successful verification so it can't be reused
-    await User.findOneAndUpdate(
-      { email },
-      { resetCode: null, resetCodeExpiry: null }
-    );
-
-    res.status(200).json({ message: "Code verified successfully" });
+    await User.findOneAndUpdate({ email }, { resetCode: null, resetCodeExpiry: null });
+    return res.status(200).json({ success: true, message: "Verification code confirmed successfully." });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("[VerifyCode]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
-async function SendEmailReset(code, email) {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: 'meleksaket2003@gmail.com',
-      pass: 'luxa gacz fkyb sryy'  // your app password
-    }
-  });
 
-  await transporter.sendMail({
-    from: '"KickOff" <meleksaket2003@gmail.com>',
+async function SendEmailReset(code, email) {
+  await resend.emails.send({
+    from: 'meleksaket2003@gmail.com',
     to: email,
     subject: '🔐 Vérification en deux étapes - KickOff',
     html: `
@@ -276,89 +235,172 @@ async function SendEmailReset(code, email) {
   });
 }
 
+// ==================== Cart ====================
 
-// Cart functionality
 export const addToCart = async (req, res) => {
-    try {
-        const { userId, products } = req.body;
-        
-        if (!userId || !products || !Array.isArray(products)) {
-            return res.status(400).json({ message: 'Invalid request data' });
-        }
+  try {
+    const { userId, products } = req.body;
 
-        // Check if user already has a cart
-        let cart = await Cart.findOne({ userId });
-        
-        if (cart) {
-            // Update existing cart
-            for (const newProduct of products) {
-                const existingProductIndex = cart.products.findIndex(
-                    p => p.productId.toString() === newProduct.productId && 
-                         p.size === newProduct.size && 
-                         p.color === newProduct.color
-                );
-                
-                if (existingProductIndex !== -1) {
-                    // Update quantity if same product, size, and color
-                    cart.products[existingProductIndex].quantity += newProduct.quantity;
-                } else {
-                    // Add new product
-                    cart.products.push(newProduct);
-                }
-            }
-        } else {
-            // Create new cart
-            cart = new Cart({ userId, products });
-        }
-        
-        cart.updatedAt = new Date();
-        await cart.save();
-        
-        return res.status(200).json({ message: 'Product added to cart successfully', cart });
-    } catch (error) {
-        console.error('Error adding to cart:', error);
-        return res.status(500).json({ message: 'Failed to add product to cart' });
+    if (!userId || !products || !Array.isArray(products)) {
+      return res.status(400).json({ success: false, message: "User ID and a valid products array are required." });
     }
+
+    let cart = await Cart.findOne({ userId });
+
+    if (cart) {
+      for (const newProduct of products) {
+        const existingIndex = cart.products.findIndex(
+          p => p.productId.toString() === newProduct.productId &&
+               p.size === newProduct.size &&
+               p.color === newProduct.color
+        );
+        if (existingIndex !== -1) {
+          cart.products[existingIndex].quantity += newProduct.quantity;
+        } else {
+          cart.products.push(newProduct);
+        }
+      }
+    } else {
+      cart = new Cart({ userId, products });
+    }
+
+    cart.updatedAt = new Date();
+    await cart.save();
+
+    return res.status(200).json({ success: true, message: "Product added to cart successfully.", data: cart });
+  } catch (error) {
+    console.error("[addToCart]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
+  }
 };
+
+export const getCart = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "User ID is required." });
+    }
+
+    const cart = await Cart.findOne({ userId }).populate("products.productId");
+    if (!cart) {
+      return res.status(200).json({ success: true, data: { products: [] } });
+    }
+
+    return res.status(200).json({ success: true, data: cart });
+  } catch (error) {
+    console.error("[getCart]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
+  }
+};
+
+export const updateCartItem = async (req, res) => {
+  const { userId, productId, size, color, quantity, cartItemId, originalSize, originalColor } = req.body;
+
+  try {
+    if (!userId || quantity === undefined) {
+      return res.status(400).json({ success: false, message: "User ID and quantity are required." });
+    }
+
+    const cart = await Cart.findOne({ userId });
+    if (!cart) {
+      return res.status(404).json({ success: false, message: "Cart not found for this user." });
+    }
+
+    let productIndex = -1;
+
+    if (cartItemId) {
+      productIndex = cart.products.findIndex(p => p._id.toString() === cartItemId.toString());
+    }
+    if (productIndex === -1 && productId && originalSize && originalColor) {
+      productIndex = cart.products.findIndex(
+        p => p.productId.toString() === productId.toString() &&
+             p.size.toLowerCase() === originalSize.toLowerCase() &&
+             p.color.toLowerCase() === originalColor.toLowerCase()
+      );
+    }
+    if (productIndex === -1 && productId && size && color) {
+      productIndex = cart.products.findIndex(
+        p => p.productId.toString() === productId.toString() &&
+             p.size.toLowerCase() === size.toLowerCase() &&
+             p.color.toLowerCase() === color.toLowerCase()
+      );
+    }
+
+    if (productIndex === -1) {
+      return res.status(404).json({ success: false, message: "Product not found in cart." });
+    }
+
+    if (quantity <= 0) {
+      cart.products.splice(productIndex, 1);
+    } else {
+      cart.products[productIndex].quantity = quantity;
+      if (size && cart.products[productIndex].size !== size) cart.products[productIndex].size = size;
+      if (color && cart.products[productIndex].color !== color) cart.products[productIndex].color = color;
+    }
+
+    cart.updatedAt = new Date();
+    await cart.save();
+
+    return res.status(200).json({ success: true, message: "Cart updated successfully.", data: cart });
+  } catch (error) {
+    console.error("[updateCartItem]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
+  }
+};
+
+export const removeFromCart = async (req, res) => {
+  const { userId, productId, size, color } = req.body;
+
+  try {
+    if (!userId || !productId || !size || !color) {
+      return res.status(400).json({ success: false, message: "User ID, product ID, size, and color are required." });
+    }
+
+    const cart = await Cart.findOne({ userId });
+    if (!cart) {
+      return res.status(404).json({ success: false, message: "Cart not found for this user." });
+    }
+
+    cart.products = cart.products.filter(
+      p => !(p.productId.toString() === productId && p.size === size && p.color === color)
+    );
+
+    cart.updatedAt = new Date();
+    await cart.save();
+
+    return res.status(200).json({ success: true, message: "Product removed from cart successfully.", data: cart });
+  } catch (error) {
+    console.error("[removeFromCart]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
+  }
+};
+
+// ==================== Orders ====================
 
 export const createOrder = async (req, res) => {
   const { id } = req.params;
-  const {
-    nom,
-    prenom,
-    email,
-    telephone,
-    rue,
-    complement,
-    ville,
-    province,
-    postal,
-  } = req.body;
-  console.log(id);
+  const { nom, prenom, email, telephone, rue, complement, ville, province, postal } = req.body;
+
   try {
-    // 1️⃣ Check required info
     if (!id || !nom || !prenom || !rue || !ville) {
-      return res.status(400).json({ message: "Informations incomplètes." });
+      return res.status(400).json({ success: false, message: "Name, surname, street, and city are required to place an order." });
     }
 
-    // 2️⃣ Get user cart
-    const cart = await Cart.findOne({ userId:id }).populate("products.productId");
+    const cart = await Cart.findOne({ userId: id }).populate("products.productId");
     if (!cart || cart.products.length === 0) {
-      return res.status(400).json({ message: "Votre panier est vide." });
+      return res.status(400).json({ success: false, message: "Your cart is empty. Add items before placing an order." });
     }
 
-    // 3️⃣ Calculate total
     const totalAmount = cart.products.reduce((sum, item) => {
-      const price = item.productId?.price || 0;
-      return sum + price * item.quantity;
+      return sum + (item.productId?.price || 0) * item.quantity;
     }, 0);
 
-    // 4️⃣ Create new order
     const newOrder = new Order({
       id,
       customerInfo: { nom, prenom, email, telephone },
       shippingAddress: { rue, complement, ville, province, postal },
-      products: cart.products.map((item) => ({
+      products: cart.products.map(item => ({
         productId: item.productId._id,
         quantity: item.quantity,
         size: item.size,
@@ -368,215 +410,70 @@ export const createOrder = async (req, res) => {
     });
 
     await newOrder.save();
-
-    // 5️⃣ Optionally clear the cart after order
     await Cart.findOneAndUpdate({ userId: id }, { products: [] });
 
-    // 6️⃣ Respond success
-    return res.status(201).json({
-      message: "Commande enregistrée avec succès.",
-      order: newOrder,
-    });
+    return res.status(201).json({ success: true, message: "Order placed successfully.", data: newOrder });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: "Erreur serveur lors de la commande." });
+    console.error("[createOrder]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
-export const getCart = async (req, res) => {
-    try {
-        const { userId } = req.params;
-        
-        if (!userId) {
-            return res.status(400).json({ message: 'User ID is required' });
-        }
-        
-        const cart = await Cart.findOne({ userId }).populate('products.productId');
-        
-        if (!cart) {
-            return res.status(200).json({ cart: { products: [] } });
-        }
-        
-        return res.status(200).json({ cart });
-    } catch (error) {
-        console.error('Error getting cart:', error);
-        return res.status(500).json({ message: 'Failed to get cart' });
-    }
-};
 
-export const updateCartItem = async (req, res) => {
-  const { userId, productId, size, color, quantity, cartItemId, originalSize, originalColor } = req.body;
-  console.log( userId, productId, size, color, quantity, cartItemId, originalSize, originalColor );
-  
+// ==================== Products ====================
+
+export const getProductById = async (req, res) => {
+  const { id } = req.params;
   try {
-    if (!userId || quantity === undefined) {
-      return res.status(400).json({ message: 'userId and quantity are required' });
+    const product = await Product.findOne({ subcategoryId: id });
+    if (!product) {
+      return res.status(404).json({ success: false, message: "No product found for this subcategory." });
     }
-
-    const cart = await Cart.findOne({ userId });
-    console.log(cart);
-    
-    if (!cart) {
-      return res.status(404).json({ message: 'Cart not found' });
-    }
-
-    let productIndex = -1;
-
-    // Method 1: Find by cartItemId (most reliable)
-    if (cartItemId) {
-      productIndex = cart.products.findIndex(
-        p => p._id.toString() === cartItemId.toString()
-      );
-    }
-    
-    // Method 2: Find by original size/color (if cartItemId not provided or not found)
-    if (productIndex === -1 && productId && originalSize && originalColor) {
-      productIndex = cart.products.findIndex(
-        p =>
-          p.productId.toString() === productId.toString() &&
-          p.size.toLowerCase() === originalSize.toLowerCase() &&
-          p.color.toLowerCase() === originalColor.toLowerCase()
-      );
-    }
-    
-    // Method 3: Fallback to new size/color (for backward compatibility)
-    if (productIndex === -1 && productId && size && color) {
-      productIndex = cart.products.findIndex(
-        p =>
-          p.productId.toString() === productId.toString() &&
-          p.size.toLowerCase() === size.toLowerCase() &&
-          p.color.toLowerCase() === color.toLowerCase()
-      );
-    }
-
-    if (productIndex === -1) {
-        return res.status(404).json({ message: 'Product not found in cart' });
-    }
-
-    // Update quantity
-    if (quantity <= 0) {
-        cart.products.splice(productIndex, 1);
-    } else {
-        cart.products[productIndex].quantity = quantity;
-        // Update size and color if provided and different
-        if (size && cart.products[productIndex].size !== size) {
-          cart.products[productIndex].size = size;
-        }
-        if (color && cart.products[productIndex].color !== color) {
-          cart.products[productIndex].color = color;
-        }
-    }
-
-    cart.updatedAt = new Date();
-    await cart.save();
-
-    return res.status(200).json({ message: 'Cart updated successfully', cart });
+    return res.status(200).json({ success: true, data: product });
   } catch (error) {
-    console.error('Error updating cart:', error);
-    return res.status(500).json({ message: 'Failed to update cart' });
+    console.error("[getProductById]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
 
-
-export const removeFromCart = async (req, res) => {
-    const { userId, productId, size, color } = req.body;
-    console.log(userId);
-    console.log(productId);
-    console.log(size);
-    console.log(color);
-    
-    try {
-        
-        if (!userId || !productId || !size || !color) {
-            return res.status(400).json({ message: 'All fields are required' });
-        }
-        
-        const cart = await Cart.findOne({ userId });
-        
-        if (!cart) {
-            return res.status(404).json({ message: 'Cart not found' });
-        }
-        
-        cart.products = cart.products.filter(
-            p => !(p.productId.toString() === productId && 
-                   p.size === size && 
-                   p.color === color)
-        );
-        
-        cart.updatedAt = new Date();
-        await cart.save();
-        
-        return res.status(200).json({ message: 'Product removed from cart successfully', cart });
-    } catch (error) {
-        console.error('Error removing from cart:', error);
-        return res.status(500).json({ message: 'Failed to remove product from cart' });
-    }
+export const getProduct = async (req, res) => {
+  try {
+    const products = await Product.find({});
+    return res.status(200).json({ success: true, count: products.length, data: products });
+  } catch (error) {
+    console.error("[getProduct]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
+  }
 };
 
-
-export const getProductById = async(req,res)=>{    
-    const {id}=req.params
-    try {
-        const product= await Product.findOne({subcategoryId:id}) 
-        if (!product) {
-            return res.status(404).json({message: "Product not found"})
-        }
-        return res.status(200).json(product)
-    } catch (error) {
-        console.log(error);
-        return res.status(404).json({Message:"Internal server error",error})
-    }
-}
-
-export const getProduct = async(req,res)=>{    
-    const {id}=req.params
-    try {
-        const product= await Product.find({})     
-        return res.status(200).json(product)
-    } catch (error) {
-        console.log(error);
-        return res.status(404).json({Message:"Internal server error",error})
-    }
-}
-
-
+// ==================== Newsletter ====================
 
 export const Subscribe = async (req, res) => {
   const { email } = req.body;
 
   try {
     if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    const exist = await Abonne.findOne({ email });
-    if (exist) {
-      return res.status(400).json({ message: "Cette adresse e-mail est déjà utilisée" });
+      return res.status(400).json({ success: false, message: "Email address is required." });
     }
 
     if (!validator.isEmail(email)) {
-      return res.status(400).json({ message: "Wrong E-mail" });
+      return res.status(400).json({ success: false, message: "Invalid email address format." });
     }
 
-    // generate confirmation token
+    const exists = await Abonne.findOne({ email });
+    if (exists) {
+      return res.status(409).json({ success: false, message: "This email address is already subscribed." });
+    }
+
     const token = crypto.randomBytes(32).toString("hex");
+    await new Abonne({ email, confirmed: false, confirmationToken: token }).save();
 
-    const newSubscribe = new Abonne({
-      email,
-      confirmed: false,
-      confirmationToken: token
-    });
-    await newSubscribe.save();
-
-    // send confirmation email with link
     const confirmUrl = `http://localhost:2025/confirm-subscribe/${token}`;
     SendConfirmationEmail(email, confirmUrl);
 
-    return res.status(201).json({
-      message: "Please confirm your email address. A confirmation link has been sent."
-    });
+    return res.status(201).json({ success: true, message: "A confirmation link has been sent to your email address." });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: "Internal Server Error" });
+    console.error("[Subscribe]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
 
@@ -586,34 +483,28 @@ export const ConfirmSubscribe = async (req, res) => {
   try {
     const subscriber = await Abonne.findOne({ confirmationToken: token });
     if (!subscriber) {
-      return res.status(400).json({ message: "Invalid or expired confirmation token" });
+      return res.status(400).json({ success: false, message: "This confirmation link is invalid or has already been used." });
     }
 
     subscriber.confirmed = true;
     subscriber.confirmationToken = undefined;
     await subscriber.save();
 
-    // now send welcome email
-    SendNewsletterWelcome(subscriber.email);
-
-    return res.status(200).json({ message: "Your subscription has been confirmed!" });
+    return res.status(200).json({ success: true, message: "Your subscription has been confirmed. Welcome!" });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: "Internal Server Error" });
+    console.error("[ConfirmSubscribe]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
 
 function SendConfirmationEmail(recipientEmail, confirmUrl) {
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: {
-      user: 'meleksaket2003@gmail.com',
-      pass: 'ghqx emfa jzan lvrn' 
-    }
+    auth: { user: 'meleksaket2003@gmail.com', pass: 'ghqx emfa jzan lvrn' }
   });
 
-  const mailOptions = {
-    from: `"ES Brand" `,
+  transporter.sendMail({
+    from: `"ES Brand"`,
     to: recipientEmail,
     subject: "Confirm your subscription to ES Newsletter",
     html: `
@@ -624,7 +515,7 @@ function SendConfirmationEmail(recipientEmail, confirmUrl) {
           </div>
           <div style="padding:20px;">
             <p style="font-size:14px;color:#444;line-height:1.6;">
-              Click the button below to confirm your subscription to <b>ES Brand</b>’s newsletter:
+              Click the button below to confirm your subscription to <b>ES Brand</b>'s newsletter:
             </p>
             <a href="${confirmUrl}" style="display:inline-block;background:black;color:white;text-decoration:none;padding:12px 20px;border-radius:6px;margin-top:15px;font-weight:bold;">
               Confirm Subscription
@@ -633,22 +524,17 @@ function SendConfirmationEmail(recipientEmail, confirmUrl) {
         </div>
       </div>
     `
-  };
-
-  transporter.sendMail(mailOptions, function (error, info) {
-    if (error) {
-      console.log("❌ Email error:", error);
-    } else {
-      console.log("✅ Confirmation email sent:", info.response);
-    }
+  }, (error, info) => {
+    if (error) console.error("[SendConfirmationEmail]", error);
+    else console.log("[SendConfirmationEmail] Sent:", info.response);
   });
 }
 
+// ==================== Filters ====================
+
 export const getFilters = async (req, res) => {
   try {
-    let { subcategoryId, genre } = req.query;
-    // console.log("Incoming filters:", subcategoryId, genre);
-
+    const { subcategoryId, genre } = req.query;
     const matchStage = {};
     if (subcategoryId) matchStage.subcategoryId = new mongoose.Types.ObjectId(subcategoryId);
     if (genre) matchStage.genre = genre;
@@ -659,12 +545,7 @@ export const getFilters = async (req, res) => {
         $facet: {
           colors: [
             { $unwind: "$color" },
-            { 
-              $group: { 
-                _id: "$color" ,// normalize lowercase
-                count: { $sum: 1 }
-              } 
-            },
+            { $group: { _id: "$color", count: { $sum: 1 } } },
             { $sort: { _id: 1 } }
           ],
           sizes: [
@@ -674,7 +555,7 @@ export const getFilters = async (req, res) => {
                 sizeArray: {
                   $cond: [
                     { $regexMatch: { input: "$size", regex: /^\[.*\]$/ } },
-                    { $map: { input: { $split: [{ $trim: { input: "$size", chars: '[]"'} }, '","'] }, as: "s", in: "$$s" } },
+                    { $map: { input: { $split: [{ $trim: { input: "$size", chars: '[]"' } }, '","'] }, as: "s", in: "$$s" } },
                     ["$size"]
                   ]
                 }
@@ -688,50 +569,45 @@ export const getFilters = async (req, res) => {
       }
     ]);
 
-    // console.log("Aggregation result:", result);
-
-    res.json(result[0]);
-  } catch (err) {
-    console.error("getFilters error:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(200).json({ success: true, data: result[0] });
+  } catch (error) {
+    console.error("[getFilters]", error);
+    return res.status(500).json({ success: false, message: "Internal server error. Please try again later." });
   }
 };
 
+// ==================== Contact ====================
+
 export const ContactMessage = async (req, res) => {
-  console.log("📩 /Contactez-nous endpoint HIT");
-
   if (!req.body) {
-    console.log("❌ No body received!");
-    return res.status(400).json({ error: "No request body" });
+    return res.status(400).json({ success: false, message: "Request body is missing." });
   }
-
-  console.log("Body received:", req.body);
 
   const { message, phone, name, email, subject } = req.body;
 
+  if (!message || !name || !email || !subject) {
+    return res.status(400).json({ success: false, message: "Name, email, subject, and message are required." });
+  }
+
   try {
     await SendEmail(message, phone, name, email, subject);
-    return res.status(200).json({ message: "Message sent successfully ✅" });
+    return res.status(200).json({ success: true, message: "Your message has been sent successfully." });
   } catch (error) {
-    console.error("Error sending email:", error);
-    return res.status(500).json({ error: "Failed to send message ❌" });
+    console.error("[ContactMessage]", error);
+    return res.status(500).json({ success: false, message: "Failed to send your message. Please try again later." });
   }
 };
-
 
 async function SendEmail(message, Number, Name, email, subject) {
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: {
-      user: "meleksaket2003@gmail.com", // ✅ must match the account used for App Password
-      pass: "luxa gacz fkyb sryy", // ✅ paste without spaces
-    },
+    auth: { user: "meleksaket2003@gmail.com", pass: "luxa gacz fkyb sryy" },
   });
 
-  const mailOptions = {
+  return transporter.sendMail({
     from: `"${Name}" <${email}>`,
     to: "melekesseket4@gmail.com",
-    subject: subject,
+    subject,
     html: `
       <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
         <h2 style="color: #0f766e;">New Partner Inquiry 📩</h2>
@@ -744,13 +620,7 @@ async function SendEmail(message, Number, Name, email, subject) {
         <p style="font-size: 12px; color: #999;">Sent automatically from the Sport Booking website.</p>
       </div>
     `,
-  };
-
-  // ✅ Return a Promise
-  return transporter.sendMail(mailOptions);
+  });
 }
 
-
-const generateToken =(id)=>{
-    return jwt.sign({id},process.env.JWT_SECRET,{expiresIn:"7d"})
-}
+const generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });

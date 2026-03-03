@@ -1,5 +1,5 @@
 import express from 'express'
-import {  addToCart, getCart, removeFromCart, Subscribe, updateCartItem, getFilters, getProduct, ConfirmSubscribe, ResetEmail, CheckEmail, Newpassword, createOrder, ContactMessage, signUp, signIn, VerifyCode,  } from '../Controls/common/common.js'
+import {  addToCart, getCart, removeFromCart, Subscribe, updateCartItem, getFilters, getProduct, ConfirmSubscribe, ResetEmail, CheckEmail, Newpassword, createOrder, ContactMessage, signUp, signIn, VerifyCode, logout,  } from '../Controls/common/common.js'
 import { getAllSubCategory, getProductById, getProductCart } from '../Controls/admin/admin.js'
 import { protect } from '../MidelWer/auth.js'
 import rateLimit from 'express-rate-limit';
@@ -17,6 +17,7 @@ const router=express.Router()
 
 router.post('/SignUp',signUp)
 router.post("/SignIn",signIn)
+router.post("/logout",logout);
 router.get("/Get-product/:id",getProductById)
 router.get("/Get-ProductCart",getProductCart)
 router.get('/getAllSubCategory',getAllSubCategory)
