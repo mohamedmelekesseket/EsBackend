@@ -144,12 +144,23 @@ export const Newpassword = async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and new password are required." });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const updatedUser = await User.findOneAndUpdate({ email }, { password: hashedPassword }, { new: true });
+    const user = await User.findOne({ email });
 
-    if (!updatedUser) {
+    if (!user) {
       return res.status(404).json({ success: false, message: "No account found with that email address." });
     }
+
+    if (!user.resetVerifiedAt || user.resetVerifiedAt < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "Password reset verification required or has expired. Please restart the reset process.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetVerifiedAt = null;
+    await user.save();
 
     return res.status(200).json({ success: true, message: "Password updated successfully." });
   } catch (error) {
@@ -203,7 +214,14 @@ export const VerifyCode = async (req, res) => {
       return res.status(400).json({ success: false, message: "The verification code has expired. Please request a new one." });
     }
 
-    await User.findOneAndUpdate({ email }, { resetCode: null, resetCodeExpiry: null });
+    await User.findOneAndUpdate(
+      { email },
+      {
+        resetCode: null,
+        resetCodeExpiry: null,
+        resetVerifiedAt: new Date(Date.now() + 15 * 60 * 1000),
+      }
+    );
     return res.status(200).json({ success: true, message: "Verification code confirmed successfully." });
   } catch (error) {
     console.error("[VerifyCode]", error);
